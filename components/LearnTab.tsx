@@ -6,12 +6,12 @@ import { Search, Plus, BookOpen, Volume2, Tag } from 'lucide-react';
 
 interface LearnTabProps {
   onAddWord: (word: WordEntry) => void;
-  existingThemes: string[];
+  customThemes: string[];
 }
 
 const DEFAULT_THEMES = ["Chung", "Giao tiếp", "Kinh doanh", "Du lịch", "Công nghệ", "Ẩm thực", "Y tế"];
 
-const LearnTab: React.FC<LearnTabProps> = ({ onAddWord, existingThemes }) => {
+const LearnTab: React.FC<LearnTabProps> = ({ onAddWord, customThemes }) => {
   const [inputWord, setInputWord] = useState('');
   const [selectedTheme, setSelectedTheme] = useState('Chung');
   const [customTheme, setCustomTheme] = useState('');
@@ -21,8 +21,8 @@ const LearnTab: React.FC<LearnTabProps> = ({ onAddWord, existingThemes }) => {
   const [result, setResult] = useState<GeneratedWordData | null>(null);
   const [error, setError] = useState('');
 
-  // Combine default and user themes unique
-  const allThemes = Array.from(new Set([...DEFAULT_THEMES, ...existingThemes]));
+  // Combine default and user themes
+  const allThemes = Array.from(new Set([...DEFAULT_THEMES, ...customThemes]));
 
   const handleLookup = async (e: React.FormEvent) => {
     e.preventDefault();

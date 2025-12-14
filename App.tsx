@@ -1,6 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Tab, WordEntry, QuizResult, UserProfile } from './types';
-import { getStoredWords, saveStoredWords, getStoredStats, saveStoredStats, getStoredProfile, saveStoredProfile } from './services/storageService';
+import { 
+  getStoredWords, saveStoredWords, 
+  getStoredStats, saveStoredStats, 
+  getStoredProfile, saveStoredProfile, 
+  getStoredCustomThemes, saveStoredCustomThemes 
+} from './services/storageService';
 import { calculateLevel, checkNewBadges, BADGES } from './services/gamificationService';
 import LearnTab from './components/LearnTab';
 import FlashcardTab from './components/FlashcardTab';
@@ -8,11 +13,14 @@ import QuizTab from './components/QuizTab';
 import StatsTab from './components/StatsTab';
 import { Book, GraduationCap, LayoutDashboard, BrainCircuit } from 'lucide-react';
 
+const DEFAULT_THEMES = ["Chung", "Giao tiếp", "Kinh doanh", "Du lịch", "Công nghệ", "Ẩm thực", "Y tế"];
+
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>(Tab.LEARN);
   const [words, setWords] = useState<WordEntry[]>([]);
   const [stats, setStats] = useState<QuizResult[]>([]);
   const [userProfile, setUserProfile] = useState<UserProfile>({ xp: 0, level: 1, unlockedBadges: [] });
+  const [customThemes, setCustomThemes] = useState<string[]>([]);
   const [notification, setNotification] = useState<string | null>(null);
 
   // Initialize data from storage
@@ -20,6 +28,7 @@ function App() {
     setWords(getStoredWords());
     setStats(getStoredStats());
     setUserProfile(getStoredProfile());
+    setCustomThemes(getStoredCustomThemes());
   }, []);
 
   const showNotification = (msg: string) => {
@@ -52,6 +61,13 @@ function App() {
     setWords(updatedWords);
     saveStoredWords(updatedWords);
 
+    // Save custom theme if new
+    if (word.theme && !DEFAULT_THEMES.includes(word.theme) && !customThemes.includes(word.theme)) {
+      const newThemes = [...customThemes, word.theme];
+      setCustomThemes(newThemes);
+      saveStoredCustomThemes(newThemes);
+    }
+
     // XP Reward for adding word
     const newProfile = { ...userProfile, xp: userProfile.xp + 10 };
     updateGamification(newProfile, updatedWords, stats);
@@ -67,7 +83,13 @@ function App() {
     updateGamification(newProfile, words, updatedStats);
   };
 
-  const existingThemes = Array.from(new Set(words.map(w => w.theme || 'General')));
+  const handleDataImported = (data: { words: WordEntry[], stats: QuizResult[], profile: UserProfile, customThemes: string[] }) => {
+    setWords(data.words);
+    setStats(data.stats);
+    setUserProfile(data.profile);
+    setCustomThemes(data.customThemes);
+    showNotification("📂 Dữ liệu đã được khôi phục thành công!");
+  };
 
   const navItems = [
     { id: Tab.LEARN, label: 'Học từ', icon: <Book className="w-5 h-5" /> },
@@ -121,10 +143,18 @@ function App() {
 
       {/* Main Content */}
       <main className="flex-1 max-w-5xl w-full mx-auto px-4 py-8">
-        {activeTab === Tab.LEARN && <LearnTab onAddWord={handleAddWord} existingThemes={existingThemes} />}
+        {activeTab === Tab.LEARN && <LearnTab onAddWord={handleAddWord} customThemes={customThemes} />}
         {activeTab === Tab.FLASHCARD && <FlashcardTab words={words} />}
         {activeTab === Tab.QUIZ && <QuizTab words={words} onFinishQuiz={handleFinishQuiz} />}
-        {activeTab === Tab.STATS && <StatsTab stats={stats} words={words} userProfile={userProfile} />}
+        {activeTab === Tab.STATS && (
+          <StatsTab 
+            stats={stats} 
+            words={words} 
+            userProfile={userProfile} 
+            customThemes={customThemes}
+            onDataImported={handleDataImported} 
+          />
+        )}
       </main>
 
       {/* Mobile Nav */}

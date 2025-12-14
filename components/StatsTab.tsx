@@ -1,18 +1,24 @@
-import React from 'react';
+import React, { useRef, useState } from 'react';
 import { QuizResult, WordEntry, UserProfile } from '../types';
 import { BADGES, getNextLevelXp } from '../services/gamificationService';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { Download, Lock, Trophy, Star } from 'lucide-react';
-import { exportToCSV } from '../services/storageService';
+import { Download, Lock, Trophy, Star, Upload, AlertCircle } from 'lucide-react';
+import { exportAllDataToCSV, importFromCSV } from '../services/storageService';
 import Button from './Button';
 
 interface StatsTabProps {
   stats: QuizResult[];
   words: WordEntry[];
   userProfile: UserProfile;
+  customThemes: string[];
+  onDataImported: (data: { words: WordEntry[], stats: QuizResult[], profile: UserProfile, customThemes: string[] }) => void;
 }
 
-const StatsTab: React.FC<StatsTabProps> = ({ stats, words, userProfile }) => {
+const StatsTab: React.FC<StatsTabProps> = ({ stats, words, userProfile, customThemes, onDataImported }) => {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [isImporting, setIsImporting] = useState(false);
+
   // Process data for the chart
   const chartData = React.useMemo(() => {
     const groups: { [key: string]: { totalScore: number; count: number } } = {};
@@ -31,6 +37,25 @@ const StatsTab: React.FC<StatsTabProps> = ({ stats, words, userProfile }) => {
 
   const nextLevelXp = getNextLevelXp(userProfile.level);
   const xpProgress = Math.min((userProfile.xp / nextLevelXp) * 100, 100);
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsImporting(true);
+    setImportError(null);
+
+    try {
+      const newData = await importFromCSV(file);
+      onDataImported(newData);
+      alert("Nhập dữ liệu thành công!");
+    } catch (err) {
+      setImportError(typeof err === 'string' ? err : "Đã xảy ra lỗi khi đọc file");
+    } finally {
+      setIsImporting(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
 
   return (
     <div className="max-w-4xl mx-auto space-y-8">
@@ -117,11 +142,32 @@ const StatsTab: React.FC<StatsTabProps> = ({ stats, words, userProfile }) => {
         </div>
 
         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-center">
-          <h3 className="text-lg font-bold text-gray-800 mb-2">Dữ liệu</h3>
-          <p className="text-gray-500 text-sm mb-6">Xuất danh sách từ vựng kèm chủ đề ra file CSV.</p>
-          <Button onClick={() => exportToCSV(words)} variant="primary" className="w-full">
-            <Download className="w-5 h-5" /> Tải xuống CSV
-          </Button>
+          <h3 className="text-lg font-bold text-gray-800 mb-2">Sao lưu & Khôi phục</h3>
+          <p className="text-gray-500 text-sm mb-6">Lưu toàn bộ tiến trình học tập (từ vựng, điểm số, cấp độ) vào file hoặc khôi phục từ file có sẵn.</p>
+          
+          <div className="space-y-3">
+            <Button onClick={() => exportAllDataToCSV(words, stats, userProfile, customThemes)} variant="primary" className="w-full">
+              <Download className="w-5 h-5" /> Tải xuống CSV
+            </Button>
+            
+            <div className="relative">
+               <input 
+                 type="file" 
+                 ref={fileInputRef}
+                 accept=".csv"
+                 onChange={handleFileChange}
+                 className="hidden"
+               />
+               <Button onClick={() => fileInputRef.current?.click()} variant="secondary" className="w-full" isLoading={isImporting}>
+                  <Upload className="w-5 h-5" /> Nhập file CSV
+               </Button>
+            </div>
+            {importError && (
+              <div className="flex items-center gap-2 text-red-600 text-xs mt-2 bg-red-50 p-2 rounded">
+                <AlertCircle className="w-4 h-4" /> {importError}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
