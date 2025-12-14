@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { WordEntry, QuizResult } from '../types';
 import Button from './Button';
-import { CheckCircle, XCircle, Trophy, Keyboard, List, type LucideIcon } from 'lucide-react';
+import { CheckCircle, XCircle, Trophy, Keyboard, List, Settings, Play, Check, Filter, RefreshCcw } from 'lucide-react';
 
 interface QuizTabProps {
   words: WordEntry[];
@@ -9,6 +9,7 @@ interface QuizTabProps {
 }
 
 type QuestionType = 'MULTIPLE_CHOICE' | 'FILL_BLANK' | 'TYPING';
+type QuizStep = 'SETUP' | 'PLAYING' | 'RESULT';
 
 interface Question {
   type: QuestionType;
@@ -19,28 +20,66 @@ interface Question {
 }
 
 const QuizTab: React.FC<QuizTabProps> = ({ words, onFinishQuiz }) => {
+  const [step, setStep] = useState<QuizStep>('SETUP');
+  
+  // Setup State
+  const [selectedThemes, setSelectedThemes] = useState<string[]>([]);
+  
+  // Quiz State
   const [questions, setQuestions] = useState<Question[]>([]);
   const [currentQIndex, setCurrentQIndex] = useState(0);
   const [score, setScore] = useState(0);
-  const [showResult, setShowResult] = useState(false);
   const [isAnswered, setIsAnswered] = useState(false);
   
-  // State for different input types
+  // Input State
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [typingInput, setTypingInput] = useState('');
   const [feedback, setFeedback] = useState<'correct' | 'incorrect' | null>(null);
   const [xpEarned, setXpEarned] = useState(0);
 
-  useEffect(() => {
-    generateQuestions();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // Derive unique themes from the actual word list
+  const availableThemes = useMemo(() => {
+    const themes = new Set(words.map(w => w.theme || 'Chung'));
+    return Array.from(themes);
   }, [words]);
 
-  const generateQuestions = () => {
-    if (words.length < 4) return;
+  // Initialize selected themes when availableThemes changes (default to all)
+  React.useEffect(() => {
+    if (availableThemes.length > 0 && selectedThemes.length === 0) {
+      setSelectedThemes(availableThemes);
+    }
+  }, [availableThemes]);
 
+  // Calculate word count based on selection
+  const filteredWords = useMemo(() => {
+    return words.filter(w => selectedThemes.includes(w.theme || 'Chung'));
+  }, [words, selectedThemes]);
+
+  const toggleTheme = (theme: string) => {
+    setSelectedThemes(prev => 
+      prev.includes(theme) 
+        ? prev.filter(t => t !== theme)
+        : [...prev, theme]
+    );
+  };
+
+  const toggleAllThemes = () => {
+    if (selectedThemes.length === availableThemes.length) {
+      setSelectedThemes([]);
+    } else {
+      setSelectedThemes(availableThemes);
+    }
+  };
+
+  const startQuiz = () => {
+    if (filteredWords.length < 4) return;
+    generateQuestions(filteredWords);
+    setStep('PLAYING');
+  };
+
+  const generateQuestions = (sourceWords: WordEntry[]) => {
     // Shuffle words and pick up to 10
-    const shuffled = [...words].sort(() => 0.5 - Math.random());
+    const shuffled = [...sourceWords].sort(() => 0.5 - Math.random());
     const selectedWords = shuffled.slice(0, Math.min(10, shuffled.length));
 
     const newQuestions: Question[] = selectedWords.map((word) => {
@@ -52,8 +91,8 @@ const QuizTab: React.FC<QuizTabProps> = ({ words, onFinishQuiz }) => {
 
       // Setup Logic based on type
       if (type === 'FILL_BLANK') {
-        // Create distractors (other words)
-        const distractors = words
+        // Create distractors (other words from the FILTERED list)
+        const distractors = sourceWords
           .filter(w => w.id !== word.id)
           .sort(() => 0.5 - Math.random())
           .slice(0, 3)
@@ -84,7 +123,7 @@ const QuizTab: React.FC<QuizTabProps> = ({ words, onFinishQuiz }) => {
       }
 
       // Default: Multiple Choice
-      const distractors = words
+      const distractors = sourceWords
         .filter((w) => w.id !== word.id)
         .sort(() => 0.5 - Math.random())
         .slice(0, 3)
@@ -104,7 +143,6 @@ const QuizTab: React.FC<QuizTabProps> = ({ words, onFinishQuiz }) => {
     setQuestions(newQuestions);
     setCurrentQIndex(0);
     setScore(0);
-    setShowResult(false);
     setIsAnswered(false);
     setSelectedOption(null);
     setTypingInput('');
@@ -156,7 +194,7 @@ const QuizTab: React.FC<QuizTabProps> = ({ words, onFinishQuiz }) => {
     const totalXp = baseXp + bonusXp;
     
     setXpEarned(totalXp);
-    setShowResult(true);
+    setStep('RESULT');
 
     const result: QuizResult = {
       id: Date.now().toString(),
@@ -168,6 +206,7 @@ const QuizTab: React.FC<QuizTabProps> = ({ words, onFinishQuiz }) => {
     onFinishQuiz(result, totalXp);
   };
 
+  // --- RENDER: EMPTY STATE ---
   if (words.length < 4) {
     return (
       <div className="text-center py-20 bg-white rounded-xl shadow-sm border border-gray-100">
@@ -178,7 +217,81 @@ const QuizTab: React.FC<QuizTabProps> = ({ words, onFinishQuiz }) => {
     );
   }
 
-  if (showResult) {
+  // --- RENDER: SETUP STEP ---
+  if (step === 'SETUP') {
+    return (
+      <div className="max-w-2xl mx-auto bg-white p-6 sm:p-8 rounded-2xl shadow-sm border border-gray-100 animate-fade-in">
+        <div className="text-center mb-8">
+          <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4 text-blue-600">
+            <Settings className="w-8 h-8" />
+          </div>
+          <h2 className="text-2xl font-bold text-gray-800">Cấu hình bài kiểm tra</h2>
+          <p className="text-gray-500 mt-2">Chọn chủ đề bạn muốn ôn tập hôm nay</p>
+        </div>
+
+        <div className="mb-6">
+          <div className="flex justify-between items-center mb-3">
+             <label className="text-sm font-bold text-gray-700 uppercase flex items-center gap-2">
+               <Filter className="w-4 h-4" /> Chủ đề ({availableThemes.length})
+             </label>
+             <button 
+               onClick={toggleAllThemes}
+               className="text-xs font-semibold text-blue-600 hover:text-blue-700 hover:bg-blue-50 px-2 py-1 rounded transition-colors"
+             >
+               {selectedThemes.length === availableThemes.length ? 'Bỏ chọn tất cả' : 'Chọn tất cả'}
+             </button>
+          </div>
+          
+          <div className="flex flex-wrap gap-2">
+            {availableThemes.map(theme => {
+               const isSelected = selectedThemes.includes(theme);
+               return (
+                 <button
+                   key={theme}
+                   onClick={() => toggleTheme(theme)}
+                   className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-all duration-200 flex items-center gap-1.5 ${
+                     isSelected 
+                       ? 'bg-blue-600 text-white border-blue-600 shadow-sm' 
+                       : 'bg-white text-gray-600 border-gray-200 hover:border-blue-300'
+                   }`}
+                 >
+                   {theme}
+                   {isSelected && <Check className="w-3 h-3" />}
+                 </button>
+               )
+            })}
+          </div>
+        </div>
+
+        <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 mb-8 flex flex-col sm:flex-row justify-between items-center gap-4">
+           <div>
+              <span className="text-gray-500 text-sm">Số lượng từ: </span>
+              <span className={`font-bold text-lg ${filteredWords.length < 4 ? 'text-red-500' : 'text-gray-800'}`}>
+                {filteredWords.length}
+              </span>
+              <span className="text-gray-400 text-xs ml-1">/ {words.length} từ</span>
+              
+              {filteredWords.length < 4 && (
+                <p className="text-red-500 text-xs mt-1 flex items-center gap-1">
+                  <XCircle className="w-3 h-3" /> Cần tối thiểu 4 từ
+                </p>
+              )}
+           </div>
+           
+           <Button 
+             onClick={startQuiz} 
+             disabled={filteredWords.length < 4}
+             className="w-full sm:w-auto px-8 py-3 text-base shadow-md hover:shadow-lg"
+           >
+             <Play className="w-5 h-5" /> Bắt đầu ngay
+           </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // --- RENDER: RESULT STEP ---
+  if (step === 'RESULT') {
     return (
       <div className="text-center py-10 animate-fade-in">
         <div className="bg-white p-8 rounded-2xl shadow-lg max-w-md mx-auto relative overflow-hidden">
@@ -197,30 +310,41 @@ const QuizTab: React.FC<QuizTabProps> = ({ words, onFinishQuiz }) => {
             </div>
           </div>
 
-          <Button onClick={generateQuestions} className="w-full py-3 text-lg">
-            Làm bài mới
-          </Button>
+          <div className="space-y-3">
+             <Button onClick={() => startQuiz()} className="w-full py-3 text-lg">
+               <RefreshCcw className="w-4 h-4" /> Làm lại bài này
+             </Button>
+             <Button onClick={() => setStep('SETUP')} variant="secondary" className="w-full py-3">
+               <Settings className="w-4 h-4" /> Chọn chủ đề khác
+             </Button>
+          </div>
         </div>
       </div>
     );
   }
 
+  // --- RENDER: PLAYING STEP ---
   if (questions.length === 0) return null;
 
   const currentQ = questions[currentQIndex];
 
   return (
-    <div className="max-w-2xl mx-auto">
+    <div className="max-w-2xl mx-auto animate-fade-in">
       {/* Progress Bar */}
       <div className="mb-6">
-        <div className="flex justify-between text-sm font-medium text-gray-500 mb-2">
-           <span className="flex items-center gap-2">
+        <div className="flex justify-between items-end mb-2">
+          <button 
+            onClick={() => setStep('SETUP')} 
+            className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1 transition-colors"
+          >
+            <Settings className="w-3 h-3" /> Cấu hình
+          </button>
+           <span className="flex items-center gap-2 text-sm font-medium text-gray-500">
              {currentQ.type === 'TYPING' && <Keyboard className="w-4 h-4"/>}
              {currentQ.type === 'MULTIPLE_CHOICE' && <List className="w-4 h-4"/>}
              {currentQ.type === 'FILL_BLANK' && <span className="font-mono text-xs border rounded px-1">...</span>}
-             Câu hỏi {currentQIndex + 1}
+             Câu {currentQIndex + 1}/{questions.length}
            </span>
-          <span>{questions.length} câu</span>
         </div>
         <div className="w-full bg-gray-200 rounded-full h-2.5">
           <div 

@@ -3,7 +3,10 @@ import { QuizResult, WordEntry, UserProfile } from "../types";
 const WORDS_KEY = "gemini_eng_words";
 const STATS_KEY = "gemini_eng_stats";
 const PROFILE_KEY = "gemini_eng_profile";
-const THEMES_KEY = "gemini_eng_custom_themes";
+// New key to store the full list of active themes (not just custom ones)
+const THEMES_KEY = "gemini_eng_active_themes_v1"; 
+
+export const DEFAULT_THEMES = ["Chung", "Giao tiếp", "Kinh doanh", "Du lịch", "Công nghệ", "Ẩm thực", "Y tế"];
 
 // --- Local Storage Helpers ---
 
@@ -11,7 +14,7 @@ export const getStoredWords = (): WordEntry[] => {
   try {
     const data = localStorage.getItem(WORDS_KEY);
     const parsed = data ? JSON.parse(data) : [];
-    return parsed.map((w: any) => ({ ...w, theme: w.theme || 'General' }));
+    return parsed.map((w: any) => ({ ...w, theme: w.theme || 'Chung' }));
   } catch (e) {
     console.error("Failed to load words", e);
     return [];
@@ -49,33 +52,46 @@ export const saveStoredProfile = (profile: UserProfile) => {
   localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
 };
 
-export const getStoredCustomThemes = (): string[] => {
+export const getStoredThemes = (): string[] => {
   try {
     const data = localStorage.getItem(THEMES_KEY);
-    return data ? JSON.parse(data) : [];
+    if (data) {
+      return JSON.parse(data);
+    }
+    
+    // MIGRATION: If no new theme data, check for old custom themes and merge with defaults
+    const oldKey = "gemini_eng_custom_themes";
+    const oldData = localStorage.getItem(oldKey);
+    let initialThemes = [...DEFAULT_THEMES];
+    
+    if (oldData) {
+      const oldCustom = JSON.parse(oldData);
+      initialThemes = Array.from(new Set([...initialThemes, ...oldCustom]));
+    }
+    
+    // Save immediately to the new key
+    saveStoredThemes(initialThemes);
+    return initialThemes;
   } catch (e) {
-    return [];
+    return DEFAULT_THEMES;
   }
 };
 
-export const saveStoredCustomThemes = (themes: string[]) => {
+export const saveStoredThemes = (themes: string[]) => {
   localStorage.setItem(THEMES_KEY, JSON.stringify(themes));
 };
 
 // --- CSV Helper Utilities ---
 
-// Helper to escape CSV fields
 const escapeCSV = (field: string | number): string => {
   if (field === null || field === undefined) return '';
   const stringField = String(field);
-  // Escape double quotes and wrap in quotes if it contains comma, quote or newline
   if (stringField.includes('"') || stringField.includes(',') || stringField.includes('\n')) {
     return `"${stringField.replace(/"/g, '""')}"`;
   }
   return stringField;
 };
 
-// Helper to parse a CSV line respecting quotes
 const parseCSVLine = (line: string): string[] => {
   const result = [];
   let current = '';
@@ -85,7 +101,7 @@ const parseCSVLine = (line: string): string[] => {
     const char = line[i];
     if (char === '"') {
       if (inQuotes && line[i + 1] === '"') {
-        current += '"'; // Handle escaped quote
+        current += '"'; 
         i++;
       } else {
         inQuotes = !inQuotes;
@@ -103,7 +119,7 @@ const parseCSVLine = (line: string): string[] => {
 
 // --- Export & Import Logic ---
 
-export const exportAllDataToCSV = (words: WordEntry[], stats: QuizResult[], profile: UserProfile, customThemes: string[]) => {
+export const exportAllDataToCSV = (words: WordEntry[], stats: QuizResult[], profile: UserProfile, themes: string[]) => {
   let csvContent = "";
 
   // SECTION 1: PROFILE
@@ -122,7 +138,7 @@ export const exportAllDataToCSV = (words: WordEntry[], stats: QuizResult[], prof
       w.meaning,
       w.explanation,
       w.example,
-      w.theme || 'General',
+      w.theme || 'Chung',
       w.addedAt
     ].map(escapeCSV).join(",");
     csvContent += row + "\n";
@@ -146,8 +162,8 @@ export const exportAllDataToCSV = (words: WordEntry[], stats: QuizResult[], prof
 
   // SECTION 4: THEMES
   csvContent += "SECTION:THEMES\n";
-  csvContent += "themes\n";
-  csvContent += `"${customThemes.join('|')}"\n`;
+  csvContent += "themes_json\n";
+  csvContent += `${escapeCSV(JSON.stringify(themes))}\n`;
 
   // Create Download
   const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
@@ -162,7 +178,7 @@ export const exportAllDataToCSV = (words: WordEntry[], stats: QuizResult[], prof
   document.body.removeChild(link);
 };
 
-export const importFromCSV = async (file: File): Promise<{ words: WordEntry[], stats: QuizResult[], profile: UserProfile, customThemes: string[] }> => {
+export const importFromCSV = async (file: File): Promise<{ words: WordEntry[], stats: QuizResult[], profile: UserProfile, themes: string[] }> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     
@@ -188,7 +204,7 @@ export const importFromCSV = async (file: File): Promise<{ words: WordEntry[], s
 
           if (line.startsWith('SECTION:')) {
             currentSection = line.split(':')[1];
-            i++; // Skip header row
+            i++; 
             continue;
           }
 
@@ -211,7 +227,7 @@ export const importFromCSV = async (file: File): Promise<{ words: WordEntry[], s
                 meaning: cols[3],
                 explanation: cols[4],
                 example: cols[5],
-                theme: cols[6] || 'General',
+                theme: cols[6] || 'Chung',
                 addedAt: parseInt(cols[7]) || Date.now()
               });
             }
@@ -227,18 +243,42 @@ export const importFromCSV = async (file: File): Promise<{ words: WordEntry[], s
             }
           } else if (currentSection === 'THEMES') {
             if (cols.length >= 1) {
-              newThemes = cols[0].split('|').filter(t => t);
+              try {
+                const parsed = JSON.parse(cols[0]);
+                if (Array.isArray(parsed)) {
+                  newThemes = parsed;
+                }
+              } catch (e) {
+                if (cols[0].includes('|') || cols[0].length > 0) {
+                  newThemes = cols[0].split('|').filter(t => t);
+                }
+              }
             }
           }
         }
 
-        // Save to Storage
+        // AUTO-DISCOVERY: Scan words for any themes not in the list (in case they were manually edited or legacy)
+        // AND ensuring DEFAULT_THEMES are present is NO LONGER forced, user allows deleting defaults.
+        // We only add a theme if a word explicitly uses it.
+        const existingThemeSet = new Set(newThemes);
+        newWords.forEach(w => {
+          if (w.theme && !existingThemeSet.has(w.theme)) {
+            newThemes.push(w.theme);
+            existingThemeSet.add(w.theme);
+          }
+        });
+        
+        // Ensure "Chung" always exists as fallback
+        if (!existingThemeSet.has("Chung")) {
+             newThemes.unshift("Chung");
+        }
+
         saveStoredProfile(newProfile);
         saveStoredWords(newWords);
         saveStoredStats(newStats);
-        saveStoredCustomThemes(newThemes);
+        saveStoredThemes(newThemes);
 
-        resolve({ words: newWords, stats: newStats, profile: newProfile, customThemes: newThemes });
+        resolve({ words: newWords, stats: newStats, profile: newProfile, themes: newThemes });
 
       } catch (err) {
         console.error("Parse Error", err);

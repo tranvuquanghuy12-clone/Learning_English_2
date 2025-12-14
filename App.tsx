@@ -4,7 +4,7 @@ import {
   getStoredWords, saveStoredWords, 
   getStoredStats, saveStoredStats, 
   getStoredProfile, saveStoredProfile, 
-  getStoredCustomThemes, saveStoredCustomThemes 
+  getStoredThemes, saveStoredThemes 
 } from './services/storageService';
 import { calculateLevel, checkNewBadges, BADGES } from './services/gamificationService';
 import LearnTab from './components/LearnTab';
@@ -13,14 +13,12 @@ import QuizTab from './components/QuizTab';
 import StatsTab from './components/StatsTab';
 import { Book, GraduationCap, LayoutDashboard, BrainCircuit } from 'lucide-react';
 
-const DEFAULT_THEMES = ["Chung", "Giao tiếp", "Kinh doanh", "Du lịch", "Công nghệ", "Ẩm thực", "Y tế"];
-
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>(Tab.LEARN);
   const [words, setWords] = useState<WordEntry[]>([]);
   const [stats, setStats] = useState<QuizResult[]>([]);
   const [userProfile, setUserProfile] = useState<UserProfile>({ xp: 0, level: 1, unlockedBadges: [] });
-  const [customThemes, setCustomThemes] = useState<string[]>([]);
+  const [themes, setThemes] = useState<string[]>([]);
   const [notification, setNotification] = useState<string | null>(null);
 
   // Initialize data from storage
@@ -28,7 +26,7 @@ function App() {
     setWords(getStoredWords());
     setStats(getStoredStats());
     setUserProfile(getStoredProfile());
-    setCustomThemes(getStoredCustomThemes());
+    setThemes(getStoredThemes());
   }, []);
 
   const showNotification = (msg: string) => {
@@ -61,16 +59,33 @@ function App() {
     setWords(updatedWords);
     saveStoredWords(updatedWords);
 
-    // Save custom theme if new
-    if (word.theme && !DEFAULT_THEMES.includes(word.theme) && !customThemes.includes(word.theme)) {
-      const newThemes = [...customThemes, word.theme];
-      setCustomThemes(newThemes);
-      saveStoredCustomThemes(newThemes);
+    // If word uses a theme not in our list, add it automatically
+    if (word.theme && !themes.includes(word.theme)) {
+      const newThemes = [...themes, word.theme];
+      setThemes(newThemes);
+      saveStoredThemes(newThemes);
     }
 
     // XP Reward for adding word
     const newProfile = { ...userProfile, xp: userProfile.xp + 10 };
     updateGamification(newProfile, updatedWords, stats);
+  };
+
+  const handleDeleteTheme = (themeToDelete: string): boolean => {
+    if (themeToDelete === 'Chung') {
+      showNotification("Không thể xoá chủ đề mặc định 'Chung'");
+      return false;
+    }
+    
+    // Friendly confirmation
+    if (confirm(`Bạn có chắc muốn xoá chủ đề "${themeToDelete}" khỏi danh sách chọn?`)) {
+      const newThemes = themes.filter(t => t !== themeToDelete);
+      setThemes(newThemes);
+      saveStoredThemes(newThemes);
+      showNotification(`Đã xoá chủ đề: ${themeToDelete}`);
+      return true;
+    }
+    return false;
   };
 
   const handleFinishQuiz = (result: QuizResult, xpEarned: number) => {
@@ -83,11 +98,11 @@ function App() {
     updateGamification(newProfile, words, updatedStats);
   };
 
-  const handleDataImported = (data: { words: WordEntry[], stats: QuizResult[], profile: UserProfile, customThemes: string[] }) => {
+  const handleDataImported = (data: { words: WordEntry[], stats: QuizResult[], profile: UserProfile, themes: string[] }) => {
     setWords(data.words);
     setStats(data.stats);
     setUserProfile(data.profile);
-    setCustomThemes(data.customThemes);
+    setThemes(data.themes);
     showNotification("📂 Dữ liệu đã được khôi phục thành công!");
   };
 
@@ -102,14 +117,14 @@ function App() {
     <div className="min-h-screen flex flex-col bg-gray-50 relative">
       {/* Toast Notification */}
       {notification && (
-        <div className="fixed top-20 right-4 z-50 bg-gray-900 text-white px-6 py-3 rounded-lg shadow-xl animate-fade-in flex items-center gap-2">
+        <div className="fixed top-20 right-4 z-[100] bg-gray-900 text-white px-6 py-3 rounded-lg shadow-xl animate-fade-in flex items-center gap-2">
           <span className="text-xl">✨</span>
           <span className="font-medium">{notification}</span>
         </div>
       )}
 
-      {/* Header */}
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
+      {/* Header - Increased z-index to 50 to cover scrolling content */}
+      <header className="bg-white/95 backdrop-blur-sm border-b border-gray-200 sticky top-0 z-50">
         <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold text-lg">
@@ -143,7 +158,13 @@ function App() {
 
       {/* Main Content */}
       <main className="flex-1 max-w-5xl w-full mx-auto px-4 py-8">
-        {activeTab === Tab.LEARN && <LearnTab onAddWord={handleAddWord} customThemes={customThemes} />}
+        {activeTab === Tab.LEARN && (
+          <LearnTab 
+            onAddWord={handleAddWord} 
+            themes={themes} 
+            onDeleteTheme={handleDeleteTheme}
+          />
+        )}
         {activeTab === Tab.FLASHCARD && <FlashcardTab words={words} />}
         {activeTab === Tab.QUIZ && <QuizTab words={words} onFinishQuiz={handleFinishQuiz} />}
         {activeTab === Tab.STATS && (
@@ -151,7 +172,7 @@ function App() {
             stats={stats} 
             words={words} 
             userProfile={userProfile} 
-            customThemes={customThemes}
+            themes={themes}
             onDataImported={handleDataImported} 
           />
         )}

@@ -10,11 +10,11 @@ interface StatsTabProps {
   stats: QuizResult[];
   words: WordEntry[];
   userProfile: UserProfile;
-  customThemes: string[];
-  onDataImported: (data: { words: WordEntry[], stats: QuizResult[], profile: UserProfile, customThemes: string[] }) => void;
+  themes: string[]; // Renamed from customThemes
+  onDataImported: (data: { words: WordEntry[], stats: QuizResult[], profile: UserProfile, themes: string[] }) => void;
 }
 
-const StatsTab: React.FC<StatsTabProps> = ({ stats, words, userProfile, customThemes, onDataImported }) => {
+const StatsTab: React.FC<StatsTabProps> = ({ stats, words, userProfile, themes, onDataImported }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importError, setImportError] = useState<string | null>(null);
   const [isImporting, setIsImporting] = useState(false);
@@ -146,7 +146,7 @@ const StatsTab: React.FC<StatsTabProps> = ({ stats, words, userProfile, customTh
           <p className="text-gray-500 text-sm mb-6">Lưu toàn bộ tiến trình học tập (từ vựng, điểm số, cấp độ) vào file hoặc khôi phục từ file có sẵn.</p>
           
           <div className="space-y-3">
-            <Button onClick={() => exportAllDataToCSV(words, stats, userProfile, customThemes)} variant="primary" className="w-full">
+            <Button onClick={() => exportAllDataToCSV(words, stats, userProfile, themes)} variant="primary" className="w-full">
               <Download className="w-5 h-5" /> Tải xuống CSV
             </Button>
             

@@ -1,28 +1,44 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { GeneratedWordData, WordEntry } from '../types';
 import { lookupWord } from '../services/geminiService';
 import Button from './Button';
-import { Search, Plus, BookOpen, Volume2, Tag } from 'lucide-react';
+import { Search, Plus, BookOpen, Volume2, Tag, X, ChevronDown, Check } from 'lucide-react';
 
 interface LearnTabProps {
   onAddWord: (word: WordEntry) => void;
-  customThemes: string[];
+  themes: string[];
+  onDeleteTheme?: (theme: string) => boolean;
 }
 
-const DEFAULT_THEMES = ["Chung", "Giao tiếp", "Kinh doanh", "Du lịch", "Công nghệ", "Ẩm thực", "Y tế"];
-
-const LearnTab: React.FC<LearnTabProps> = ({ onAddWord, customThemes }) => {
+const LearnTab: React.FC<LearnTabProps> = ({ onAddWord, themes, onDeleteTheme }) => {
   const [inputWord, setInputWord] = useState('');
   const [selectedTheme, setSelectedTheme] = useState('Chung');
   const [customTheme, setCustomTheme] = useState('');
   const [isCustomTheme, setIsCustomTheme] = useState(false);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<GeneratedWordData | null>(null);
   const [error, setError] = useState('');
 
-  // Combine default and user themes
-  const allThemes = Array.from(new Set([...DEFAULT_THEMES, ...customThemes]));
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Sync selectedTheme if it gets deleted externally or via the delete action
+  useEffect(() => {
+    if (!isCustomTheme && selectedTheme !== 'Chung' && !themes.includes(selectedTheme)) {
+      setSelectedTheme('Chung');
+    }
+  }, [themes, selectedTheme, isCustomTheme]);
 
   const handleLookup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -56,8 +72,24 @@ const LearnTab: React.FC<LearnTabProps> = ({ onAddWord, customThemes }) => {
       addedAt: Date.now(),
     };
     onAddWord(newEntry);
+    
+    // Reset after adding
+    if (isCustomTheme && customTheme.trim()) {
+       setSelectedTheme(customTheme.trim());
+       setIsCustomTheme(false);
+       setCustomTheme('');
+    }
     setInputWord('');
     setResult(null);
+  };
+
+  const handleDeleteCurrentTheme = (e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent dropdown toggle
+    if (onDeleteTheme) {
+      // If deleted successfully, logic in useEffect or App will handle state,
+      // but we can also manually reset if needed.
+      onDeleteTheme(selectedTheme);
+    }
   };
 
   return (
@@ -82,35 +114,81 @@ const LearnTab: React.FC<LearnTabProps> = ({ onAddWord, customThemes }) => {
           <div className="flex flex-col sm:flex-row gap-4">
              <div className="flex-1">
                <label className="block text-xs font-semibold text-gray-500 mb-1">Chủ đề</label>
-               <select 
-                 value={isCustomTheme ? 'custom' : selectedTheme}
-                 onChange={(e) => {
-                   if (e.target.value === 'custom') {
-                     setIsCustomTheme(true);
-                   } else {
-                     setIsCustomTheme(false);
-                     setSelectedTheme(e.target.value);
-                   }
-                 }}
-                 className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white"
-               >
-                 {allThemes.map(t => <option key={t} value={t}>{t}</option>)}
-                 <option value="custom">+ Thêm chủ đề mới</option>
-               </select>
+               
+               {isCustomTheme ? (
+                 <div className="flex gap-2 animate-fade-in">
+                   <input
+                    type="text"
+                    value={customTheme}
+                    onChange={(e) => setCustomTheme(e.target.value)}
+                    placeholder="Nhập tên chủ đề..."
+                    className="flex-1 p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                    autoFocus
+                   />
+                   <button 
+                     type="button" 
+                     onClick={() => setIsCustomTheme(false)}
+                     className="p-2.5 text-gray-500 hover:bg-gray-100 rounded-lg border border-gray-300"
+                     title="Huỷ"
+                   >
+                     <X className="w-5 h-5" />
+                   </button>
+                 </div>
+               ) : (
+                 <div className="relative" ref={dropdownRef}>
+                    <div 
+                      className="flex items-center justify-between w-full p-2.5 border border-gray-300 rounded-lg bg-white cursor-pointer hover:border-blue-400 transition-colors"
+                      onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                    >
+                       <span className="text-sm text-gray-800">{selectedTheme}</span>
+                       
+                       <div className="flex items-center gap-1">
+                         {/* Delete Button integrated into the selector */}
+                         {selectedTheme !== 'Chung' && (
+                           <button
+                             type="button"
+                             onClick={handleDeleteCurrentTheme}
+                             className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-all mr-1"
+                             title={`Xoá chủ đề "${selectedTheme}"`}
+                           >
+                             <X className="w-4 h-4" />
+                           </button>
+                         )}
+                         <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`} />
+                       </div>
+                    </div>
+
+                    {isDropdownOpen && (
+                      <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl max-h-60 overflow-y-auto animate-in fade-in zoom-in-95 duration-100">
+                         {themes.map(t => (
+                           <div 
+                             key={t}
+                             onClick={() => {
+                               setSelectedTheme(t);
+                               setIsDropdownOpen(false);
+                             }}
+                             className={`px-3 py-2.5 text-sm cursor-pointer hover:bg-gray-50 flex justify-between items-center ${
+                               t === selectedTheme ? 'text-blue-600 bg-blue-50 font-medium' : 'text-gray-700'
+                             }`}
+                           >
+                              {t}
+                              {t === selectedTheme && <Check className="w-4 h-4" />}
+                           </div>
+                         ))}
+                         <div 
+                           onClick={() => {
+                              setIsCustomTheme(true);
+                              setIsDropdownOpen(false);
+                           }}
+                           className="px-3 py-2.5 text-sm text-blue-600 font-medium cursor-pointer hover:bg-gray-50 border-t border-gray-100 flex items-center gap-2 sticky bottom-0 bg-white"
+                         >
+                            <Plus className="w-4 h-4" /> Thêm chủ đề mới
+                         </div>
+                      </div>
+                    )}
+                 </div>
+               )}
              </div>
-             
-             {isCustomTheme && (
-               <div className="flex-1">
-                 <label className="block text-xs font-semibold text-gray-500 mb-1">Tên chủ đề mới</label>
-                 <input
-                  type="text"
-                  value={customTheme}
-                  onChange={(e) => setCustomTheme(e.target.value)}
-                  placeholder="Nhập tên chủ đề..."
-                  className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-                 />
-               </div>
-             )}
           </div>
 
           <Button type="submit" isLoading={isLoading} disabled={!inputWord} className="w-full sm:w-auto">
