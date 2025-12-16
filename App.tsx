@@ -11,7 +11,8 @@ import LearnTab from './components/LearnTab';
 import FlashcardTab from './components/FlashcardTab';
 import QuizTab from './components/QuizTab';
 import StatsTab from './components/StatsTab';
-import { Book, GraduationCap, LayoutDashboard, BrainCircuit } from 'lucide-react';
+import DictionariesTab from './components/DictionariesTab';
+import { Book, GraduationCap, LayoutDashboard, BrainCircuit, Library } from 'lucide-react';
 
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>(Tab.LEARN);
@@ -71,21 +72,77 @@ function App() {
     updateGamification(newProfile, updatedWords, stats);
   };
 
-  const handleDeleteTheme = (themeToDelete: string): boolean => {
+  const handleAddTheme = (newTheme: string) => {
+    if (themes.includes(newTheme)) {
+      showNotification("Tên bộ từ điển đã tồn tại!");
+      return;
+    }
+    const updatedThemes = [...themes, newTheme];
+    setThemes(updatedThemes);
+    saveStoredThemes(updatedThemes);
+    showNotification(`Đã tạo bộ từ điển: ${newTheme}`);
+  };
+
+  const handleRenameTheme = (oldName: string, newName: string) => {
+    if (themes.includes(newName)) {
+      showNotification("Tên mới đã tồn tại, vui lòng chọn tên khác.");
+      return;
+    }
+
+    // 1. Update Themes List
+    const updatedThemes = themes.map(t => t === oldName ? newName : t);
+    setThemes(updatedThemes);
+    saveStoredThemes(updatedThemes);
+
+    // 2. Update all words belonging to this theme
+    const updatedWords = words.map(w => w.theme === oldName ? { ...w, theme: newName } : w);
+    setWords(updatedWords);
+    saveStoredWords(updatedWords);
+
+    showNotification("Đã đổi tên thành công!");
+  };
+
+  // Improved Delete: Deletes the theme AND the words inside it (cleanup)
+  const handleDeleteThemeWithCleanup = (themeToDelete: string) => {
     if (themeToDelete === 'Chung') {
-      showNotification("Không thể xoá chủ đề mặc định 'Chung'");
-      return false;
+      showNotification("Không thể xoá bộ mặc định 'Chung'");
+      return;
     }
     
-    // Friendly confirmation
-    if (confirm(`Bạn có chắc muốn xoá chủ đề "${themeToDelete}" khỏi danh sách chọn?`)) {
+    const count = words.filter(w => w.theme === themeToDelete).length;
+    
+    if (confirm(`Bạn có chắc muốn xoá bộ từ điển "${themeToDelete}"?\n\n⚠️ CẢNH BÁO: Hành động này sẽ xoá vĩnh viễn ${count} từ vựng thuộc bộ này.`)) {
+      // 1. Remove Theme
       const newThemes = themes.filter(t => t !== themeToDelete);
       setThemes(newThemes);
       saveStoredThemes(newThemes);
-      showNotification(`Đã xoá chủ đề: ${themeToDelete}`);
-      return true;
+
+      // 2. Remove Words
+      const newWords = words.filter(w => w.theme !== themeToDelete);
+      setWords(newWords);
+      saveStoredWords(newWords);
+
+      showNotification(`Đã xoá bộ từ điển và ${count} từ liên quan.`);
     }
-    return false;
+  };
+
+  // Legacy delete for LearnTab (keeps words but moves logic slightly, or we can reuse the cleanup logic if desired. 
+  // Based on user request "remove dictionary", cleanup is better.)
+  const handleQuickDeleteTheme = (themeToDelete: string): boolean => {
+     if (themeToDelete === 'Chung') return false;
+     
+     // Reuse logic but return boolean for LearnTab UI
+     if (confirm(`Xoá chủ đề "${themeToDelete}" và toàn bộ từ vựng bên trong?`)) {
+        const newThemes = themes.filter(t => t !== themeToDelete);
+        setThemes(newThemes);
+        saveStoredThemes(newThemes);
+        
+        const newWords = words.filter(w => w.theme !== themeToDelete);
+        setWords(newWords);
+        saveStoredWords(newWords);
+        return true;
+     }
+     return false;
   };
 
   const handleFinishQuiz = (result: QuizResult, xpEarned: number) => {
@@ -108,6 +165,7 @@ function App() {
 
   const navItems = [
     { id: Tab.LEARN, label: 'Học từ', icon: <Book className="w-5 h-5" /> },
+    { id: Tab.DICTIONARY, label: 'Bộ từ điển', icon: <Library className="w-5 h-5" /> },
     { id: Tab.FLASHCARD, label: 'Thẻ nhớ', icon: <BrainCircuit className="w-5 h-5" /> },
     { id: Tab.QUIZ, label: 'Kiểm tra', icon: <GraduationCap className="w-5 h-5" /> },
     { id: Tab.STATS, label: 'Thống kê', icon: <LayoutDashboard className="w-5 h-5" /> },
@@ -156,18 +214,35 @@ function App() {
         </div>
       </header>
 
-      {/* Main Content */}
+      {/* Main Content - Using display utility classes to keep components mounted (cached) */}
       <main className="flex-1 max-w-5xl w-full mx-auto px-4 py-8">
-        {activeTab === Tab.LEARN && (
+        <div className={activeTab === Tab.LEARN ? 'block' : 'hidden'}>
           <LearnTab 
             onAddWord={handleAddWord} 
             themes={themes} 
-            onDeleteTheme={handleDeleteTheme}
+            onDeleteTheme={handleQuickDeleteTheme}
           />
-        )}
-        {activeTab === Tab.FLASHCARD && <FlashcardTab words={words} />}
-        {activeTab === Tab.QUIZ && <QuizTab words={words} onFinishQuiz={handleFinishQuiz} />}
-        {activeTab === Tab.STATS && (
+        </div>
+        
+        <div className={activeTab === Tab.DICTIONARY ? 'block' : 'hidden'}>
+          <DictionariesTab
+            themes={themes}
+            words={words}
+            onAddTheme={handleAddTheme}
+            onRenameTheme={handleRenameTheme}
+            onDeleteTheme={handleDeleteThemeWithCleanup}
+          />
+        </div>
+
+        <div className={activeTab === Tab.FLASHCARD ? 'block' : 'hidden'}>
+          <FlashcardTab words={words} themes={themes} />
+        </div>
+
+        <div className={activeTab === Tab.QUIZ ? 'block' : 'hidden'}>
+          <QuizTab words={words} onFinishQuiz={handleFinishQuiz} />
+        </div>
+
+        <div className={activeTab === Tab.STATS ? 'block' : 'hidden'}>
           <StatsTab 
             stats={stats} 
             words={words} 
@@ -175,22 +250,22 @@ function App() {
             themes={themes}
             onDataImported={handleDataImported} 
           />
-        )}
+        </div>
       </main>
 
       {/* Mobile Nav */}
       <nav className="md:hidden bg-white border-t border-gray-200 fixed bottom-0 w-full z-10 pb-safe">
-        <div className="grid grid-cols-4 h-16">
+        <div className="grid grid-cols-5 h-16">
           {navItems.map((item) => (
             <button
               key={item.id}
               onClick={() => setActiveTab(item.id)}
-              className={`flex flex-col items-center justify-center gap-1 text-xs font-medium transition-colors ${
+              className={`flex flex-col items-center justify-center gap-1 text-[10px] font-medium transition-colors ${
                 activeTab === item.id ? 'text-blue-600' : 'text-gray-500'
               }`}
             >
               {item.icon}
-              {item.label}
+              <span className="truncate w-full text-center px-1">{item.label}</span>
             </button>
           ))}
         </div>

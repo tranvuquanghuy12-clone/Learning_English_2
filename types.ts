@@ -1,3 +1,4 @@
+
 export interface WordEntry {
   id: string;
   word: string;
@@ -35,7 +36,8 @@ export enum Tab {
   LEARN = 'LEARN',
   FLASHCARD = 'FLASHCARD',
   QUIZ = 'QUIZ',
-  STATS = 'STATS'
+  STATS = 'STATS',
+  DICTIONARY = 'DICTIONARY'
 }
 
 export interface GeneratedWordData {

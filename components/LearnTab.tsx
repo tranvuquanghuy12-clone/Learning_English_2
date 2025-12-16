@@ -10,6 +10,27 @@ interface LearnTabProps {
   onDeleteTheme?: (theme: string) => boolean;
 }
 
+const TypewriterText = ({ text }: { text: string }) => {
+  const [displayText, setDisplayText] = useState('');
+
+  useEffect(() => {
+    let i = 0;
+    setDisplayText('');
+    const timer = setInterval(() => {
+      if (i < text.length) {
+        setDisplayText((prev) => prev + text.charAt(i));
+        i++;
+      } else {
+        clearInterval(timer);
+      }
+    }, 20);
+
+    return () => clearInterval(timer);
+  }, [text]);
+
+  return <span>{displayText}</span>;
+};
+
 const LearnTab: React.FC<LearnTabProps> = ({ onAddWord, themes, onDeleteTheme }) => {
   const [inputWord, setInputWord] = useState('');
   const [selectedTheme, setSelectedTheme] = useState('Chung');
@@ -89,6 +110,16 @@ const LearnTab: React.FC<LearnTabProps> = ({ onAddWord, themes, onDeleteTheme })
       // If deleted successfully, logic in useEffect or App will handle state,
       // but we can also manually reset if needed.
       onDeleteTheme(selectedTheme);
+    }
+  };
+
+  const playAudio = (text: string) => {
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel(); // Cancel any current speech
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = 'en-US'; // Default to US English
+      utterance.rate = 0.9; // Slightly slower for clarity
+      window.speechSynthesis.speak(utterance);
     }
   };
 
@@ -210,7 +241,14 @@ const LearnTab: React.FC<LearnTabProps> = ({ onAddWord, themes, onDeleteTheme })
                  </span>
               </div>
               <div className="flex items-center gap-2 mt-1 text-gray-500">
-                <Volume2 className="w-4 h-4" />
+                <button
+                  type="button"
+                  onClick={() => playAudio(inputWord)}
+                  className="p-1.5 hover:bg-blue-100 text-blue-500 rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-300"
+                  title="Nghe phát âm"
+                >
+                  <Volume2 className="w-5 h-5" />
+                </button>
                 <span className="font-mono bg-gray-100 px-2 py-0.5 rounded text-sm">{result.pronunciation}</span>
               </div>
             </div>
@@ -235,7 +273,9 @@ const LearnTab: React.FC<LearnTabProps> = ({ onAddWord, themes, onDeleteTheme })
               <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1">
                 <BookOpen className="w-3 h-3" /> Ví dụ
               </label>
-              <p className="text-gray-700 mt-1 italic">"{result.example}"</p>
+              <p className="text-gray-700 mt-1 italic min-h-[1.5rem]">
+                "<TypewriterText text={result.example} />"
+              </p>
             </div>
           </div>
         </div>
